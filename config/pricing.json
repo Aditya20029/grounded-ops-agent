@@ -1,0 +1,14 @@
+{
+  "_comment": "USD price per 1,000,000 tokens. Prices are configurable and may be out of date; verify against provider pricing pages. Cost is computed from ACTUAL token usage returned by the provider, never from these estimates baked into business logic. 'embedding' models bill input only (output = 0).",
+  "_updated": "2026-06-19",
+  "models": {
+    "claude-opus-4-8":          { "input": 5.00, "output": 25.00, "kind": "chat" },
+    "claude-opus-4-7":          { "input": 5.00, "output": 25.00, "kind": "chat" },
+    "claude-sonnet-4-6":        { "input": 3.00, "output": 15.00, "kind": "chat" },
+    "claude-haiku-4-5":         { "input": 1.00, "output": 5.00,  "kind": "chat" },
+    "gpt-4o":                   { "input": 2.50, "output": 10.00, "kind": "chat" },
+    "gpt-4o-mini":              { "input": 0.15, "output": 0.60,  "kind": "chat" },
+    "text-embedding-3-small":   { "input": 0.02, "output": 0.00,  "kind": "embedding" },
+    "text-embedding-3-large":   { "input": 0.13, "output": 0.00,  "kind": "embedding" }
+  }
+}

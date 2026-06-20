@@ -1,0 +1,131 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "grounded-ops-agent"
+version = "0.1.0"
+description = "Grounded operations assistant: RAG + agentic tool use over MCP with citation grounding and hard guardrails."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Aditya" }]
+keywords = ["rag", "mcp", "agent", "pgvector", "faiss", "citations", "llm"]
+
+dependencies = [
+  # Web / API
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "sse-starlette>=2.1",
+  "pydantic>=2.7",
+  "pydantic-settings>=2.3",
+  # Database
+  "sqlalchemy[asyncio]>=2.0",
+  "asyncpg>=0.29",
+  "alembic>=1.13",
+  "pgvector>=0.3",
+  # Retrieval / embeddings
+  "faiss-cpu>=1.8",
+  "sentence-transformers>=3.0",
+  "numpy>=1.26",
+  # LLM providers
+  "anthropic>=0.40",
+  "openai>=1.40",
+  "tiktoken>=0.7",
+  # MCP (verify current API before coding; see docs/architecture.md)
+  "mcp>=1.27,<2",
+  # Utilities
+  "httpx>=0.27",
+  "tenacity>=8.3",
+  "faker>=25",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.2",
+  "pytest-asyncio>=0.23",
+  "pytest-cov>=5.0",
+  "ruff>=0.5",
+  "mypy>=1.10",
+]
+
+[project.urls]
+Homepage = "https://github.com/Aditya20029/grounded-ops-agent"
+Repository = "https://github.com/Aditya20029/grounded-ops-agent"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+app = ["py.typed"]
+
+# -----------------------------------------------------------------------------
+# Ruff: linter + formatter
+# -----------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4", "RUF", "ASYNC"]
+# B008: FastAPI uses `Depends(...)` as a default value by design.
+ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/*" = ["B011"]
+
+# -----------------------------------------------------------------------------
+# Mypy: strict-ish static typing
+# -----------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+strict_equality = true
+disallow_untyped_decorators = true
+plugins = ["pydantic.mypy"]
+
+# Third-party libraries without type stubs.
+[[tool.mypy.overrides]]
+module = [
+  "faiss",
+  "faiss.*",
+  "sentence_transformers",
+  "sentence_transformers.*",
+  "mcp",
+  "mcp.*",
+  "pgvector",
+  "pgvector.*",
+  "sse_starlette",
+  "sse_starlette.*",
+]
+ignore_missing_imports = true
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+# -----------------------------------------------------------------------------
+# Pytest
+# -----------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-q"
+markers = [
+  "unit: deterministic, offline unit tests (no external dependencies)",
+  "integration: tests that require a running Postgres+pgvector instance",
+]
+
+[tool.coverage.run]
+source = ["src/app"]
+branch = true

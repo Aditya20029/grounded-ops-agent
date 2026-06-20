@@ -1,0 +1,24 @@
+# Postgres with the pgvector extension. The healthcheck lets the app and the
+# Makefile targets wait until the database is actually ready to accept queries.
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: ops_db
+    environment:
+      POSTGRES_USER: ops
+      POSTGRES_PASSWORD: ops
+      POSTGRES_DB: ops
+    ports:
+      - "5432:5432"
+    volumes:
+      - ops_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # pg_isready returns success only once the server accepts connections.
+      test: ["CMD-SHELL", "pg_isready -U ops -d ops"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+volumes:
+  ops_pgdata:
