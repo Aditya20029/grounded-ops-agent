@@ -106,6 +106,10 @@ module = [
   "pgvector.*",
   "sse_starlette",
   "sse_starlette.*",
+  "faker",
+  "faker.*",
+  "tiktoken",
+  "tiktoken.*",
 ]
 ignore_missing_imports = true
 
