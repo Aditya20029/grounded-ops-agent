@@ -70,7 +70,8 @@ src = ["src", "tests", "scripts"]
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4", "RUF", "ASYNC"]
 # B008: FastAPI uses `Depends(...)` as a default value by design.
-ignore = ["B008"]
+# ASYNC109: a `timeout` parameter is a deliberate part of the tool-call API.
+ignore = ["B008", "ASYNC109"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
