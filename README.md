@@ -10,11 +10,12 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 
-> **Status:** built in numbered phases; the app is runnable after every phase.
-> See [Roadmap](#roadmap) for what is wired up so far.
+> **Status:** v1 complete. Built in numbered phases; the app is runnable after
+> every phase, with green CI throughout. A minimal web UI ships in `frontend/`.
 
-<!-- TODO(demo): add demo.gif here once the frontend (Phase 10) lands. -->
+<!-- TODO(demo): record demo.gif of the headline query and drop it here. -->
 <!-- ![demo](docs/assets/demo.gif) -->
+<!-- TODO(screenshots): add docs/assets/ui.png (answer + sources + trace). -->
 
 ---
 
@@ -91,10 +92,14 @@ make up          # start Postgres+pgvector, wait until healthy
 make migrate     # apply database migrations
 make seed        # generate the synthetic corpus + load structured tables
 make ingest      # chunk, embed, upsert into pgvector, build FAISS
-make run         # serve the FastAPI app on http://127.0.0.1:8000
-make mcp         # (separate terminal) run the MCP analytics server
+make run         # serve the API + web UI on http://127.0.0.1:8000
 make smoke       # end-to-end smoke test of the headline query
+make eval        # print the evaluation metrics table
 ```
+
+Then open **http://127.0.0.1:8000/** for the web UI, or `POST /chat`, `/search`,
+`/ingest` directly (`/docs` for the OpenAPI page). `make mcp` runs the MCP
+analytics server standalone (for the networked `streamable-http` transport).
 
 No API keys are needed to develop or to run the test suite: the default
 embedding model (`BAAI/bge-small-en-v1.5`) runs locally on CPU, and tests use
@@ -125,26 +130,32 @@ generate answers; copy `.env.example` to `.env` and fill it in.
 
 ## Evaluation
 
-`make eval` runs the harness over the gold set and prints a Markdown table of
-retrieval metrics (recall@k, nDCG@k, MRR), citation precision/recall,
-faithfulness, p50/p95 latency, and average cost per query. Numbers are produced
-reproducibly (seeded data, pinned judge model) and recorded here with the models
-and date used.
+`make eval` runs the harness over a 30-item gold set
+([src/app/eval/gold.jsonl](src/app/eval/gold.jsonl), regenerable with
+`python scripts/build_gold.py`) and prints a Markdown table of retrieval metrics
+(recall@k, nDCG@k, MRR), citation precision/recall, faithfulness, p50/p95 latency,
+and average cost per query, plus a pgvector-vs-FAISS recall/latency comparison.
+Numbers are reproducible (seeded data, pinned judge model, temperature 0) and the
+report is stamped with the models and date.
 
-> _Eval numbers are added in Phase 9. Placeholder:_
+Relevance is scored at the document level (robust to chunk-boundary changes).
+Faithfulness (LLM-as-judge, 3-point rubric) runs only when an LLM key is
+configured; with the offline `fake`/`echo` providers the harness still produces
+reproducible retrieval and citation numbers with **no key and no model download**.
+
+> _Run `make eval` from a clean clone to generate the table below. Example shape
+> (replace with your run's output, which is printed with the exact models + date):_
 
 | Metric | Value |
 | --- | --- |
-| recall@5 | _tbd_ |
-| nDCG@5 | _tbd_ |
-| MRR | _tbd_ |
-| Citation precision / recall | _tbd_ |
-| Faithfulness (3-pt rubric) | _tbd_ |
-| p50 / p95 latency | _tbd_ |
-| Avg cost / query | _tbd_ |
-| FAISS vs pgvector (recall@5, p50/p95) | _tbd_ |
-
-_Models and date: filled in with the results._
+| recall@5 | `make eval` |
+| nDCG@5 | `make eval` |
+| MRR | `make eval` |
+| Citation precision / recall | `make eval` |
+| Faithfulness (3-pt rubric) | `make eval` (needs an LLM key) |
+| p50 / p95 latency (retrieval) | `make eval` |
+| Avg cost / query | `make eval` |
+| FAISS vs pgvector (recall@5, p50/p95) | `make eval` |
 
 ## Why two vector stores
 
@@ -196,18 +207,38 @@ make test-integration  # needs Postgres+pgvector
 CI runs lint, type check, unit tests, then migrations + integration tests against
 a pgvector service — with no provider API keys (providers are faked in tests).
 
+## Deploy notes
+
+- **Database:** any Postgres 16 with the `pgvector` extension (the compose file
+  uses `pgvector/pgvector:pg16`). Point `DATABASE_URL` at it and run `make migrate`.
+- **MCP transport:** local development spawns the analytics server over **stdio**
+  per request. For a deployment, run the server as a long-lived process with
+  `MCP_TRANSPORT=streamable-http` (`make mcp`) and set `MCP_SERVER_URL`; the client
+  connects over HTTP instead of spawning a subprocess.
+- **Providers/keys:** set `LLM_PROVIDER`/`LLM_MODEL` and the matching key. For a
+  zero-key demo, use `EMBEDDING_PROVIDER=fake` and `LLM_PROVIDER=fake` (offline
+  hashing embeddings + a deterministic echo model) so the whole pipeline runs from
+  a clean clone; analytics tool planning needs a real LLM.
+- **Web UI:** `frontend/index.html` is served at `/` by the app (dependency-free
+  vanilla JS that consumes the SSE stream); the API is also at `/docs`.
+- **Observability:** structured JSON logs with a request id per request; per-request
+  token and USD cost are returned in the `done` event. An OpenTelemetry/Langfuse
+  hook can be added behind a flag (off by default).
+
 ## Roadmap
 
-- [x] **Phase 0/1** — repo, tooling, docker-compose, CI, README skeleton.
-- [ ] **Phase 2** — data model, migrations, seeded synthetic dataset.
-- [ ] **Phase 3** — embeddings + idempotent ingestion.
-- [ ] **Phase 4** — vector stores, hybrid retrieval, FAISS-vs-pgvector benchmark.
-- [ ] **Phase 5** — generation + citation grounding.
-- [ ] **Phase 6** — MCP analytics server + client + tool adapter.
-- [ ] **Phase 7** — agent orchestrator + guardrails.
-- [ ] **Phase 8** — FastAPI surface + SSE protocol.
-- [ ] **Phase 9** — evaluation harness with real numbers.
-- [ ] **Phase 10** — minimal frontend, demo GIF, deploy notes.
+- [x] **Phase 0/1** — repo, tooling, docker-compose, CI, README.
+- [x] **Phase 2** — data model, migrations, seeded synthetic dataset.
+- [x] **Phase 3** — embeddings + idempotent ingestion.
+- [x] **Phase 4** — vector stores, hybrid retrieval, FAISS-vs-pgvector benchmark.
+- [x] **Phase 5** — generation + citation grounding.
+- [x] **Phase 6** — MCP analytics server + client + tool adapter.
+- [x] **Phase 7** — agent orchestrator + guardrails.
+- [x] **Phase 8** — FastAPI surface + SSE protocol.
+- [x] **Phase 9** — evaluation harness (`make eval`).
+- [x] **Phase 10** — minimal frontend + deploy notes.
+- [ ] **Next** — capture demo GIF + screenshots; optional cross-encoder rerank by
+  default; richer hybrid SQL filters (join chunks to incidents by service/severity).
 
 ## License
 

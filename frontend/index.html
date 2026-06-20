@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>grounded-ops-agent</title>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #171a23; --panel2: #1d2130; --line: #2a3040;
+    --text: #e6e9f0; --muted: #9aa3b5; --accent: #5b9dff; --ok: #4ade80;
+    --warn: #fbbf24; --err: #f87171; --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.55 -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  }
+  header { padding: 20px 24px; border-bottom: 1px solid var(--line); }
+  header h1 { margin: 0; font-size: 18px; letter-spacing: .2px; }
+  header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 24px; }
+  .ask { display: flex; gap: 10px; }
+  textarea {
+    flex: 1; min-height: 64px; resize: vertical; padding: 12px 14px;
+    background: var(--panel); color: var(--text); border: 1px solid var(--line);
+    border-radius: 10px; font: inherit;
+  }
+  button {
+    padding: 0 18px; border: 0; border-radius: 10px; background: var(--accent);
+    color: #06122b; font-weight: 600; cursor: pointer;
+  }
+  button:disabled { opacity: .5; cursor: default; }
+  .examples { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .examples button { background: var(--panel2); color: var(--muted); font-weight: 500; padding: 6px 10px; font-size: 12px; }
+  .status { margin: 16px 0 6px; color: var(--muted); font-size: 12px; min-height: 16px; font-family: var(--mono); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-top: 14px; }
+  .card h2 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); }
+  #answer { white-space: pre-wrap; }
+  #answer .cite { color: var(--accent); font-weight: 600; }
+  .src { border-top: 1px solid var(--line); padding: 10px 0; }
+  .src:first-child { border-top: 0; }
+  .src .idx { color: var(--accent); font-family: var(--mono); }
+  .src .meta { color: var(--muted); font-size: 12px; font-family: var(--mono); }
+  .src .snip { color: var(--text); font-size: 13px; margin-top: 4px; }
+  details summary { cursor: pointer; color: var(--muted); }
+  .step { font-family: var(--mono); font-size: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .step:first-child { border-top: 0; }
+  .step .tool { color: var(--accent); }
+  .step.err .tool { color: var(--err); }
+  .pill { display: inline-block; padding: 1px 7px; border-radius: 99px; background: var(--panel2); color: var(--muted); font-size: 11px; font-family: var(--mono); margin-left: 6px; }
+  .hidden { display: none; }
+  footer { color: var(--muted); font-size: 12px; text-align: center; padding: 24px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+  <header>
+    <h1>grounded-ops-agent</h1>
+    <p>Grounded RAG + agentic MCP tool use, with inline citations and a tool-call trace.</p>
+  </header>
+  <div class="wrap">
+    <div class="ask">
+      <textarea id="q" placeholder="Ask about incidents, postmortems, metrics&hellip;"></textarea>
+      <button id="send">Ask</button>
+    </div>
+    <div class="examples" id="examples"></div>
+    <div class="status" id="status"></div>
+
+    <div class="card" id="answerCard">
+      <h2>Answer <span class="pill" id="meta"></span></h2>
+      <div id="answer"></div>
+    </div>
+
+    <div class="card hidden" id="sourcesCard">
+      <h2>Sources</h2>
+      <div id="sources"></div>
+    </div>
+
+    <div class="card hidden" id="traceCard">
+      <details>
+        <summary>Tool-call trace</summary>
+        <div id="trace"></div>
+      </details>
+    </div>
+  </div>
+  <footer>
+    Stream events: status &middot; tool_call &middot; tool_result &middot; token &middot; sources &middot; trace &middot; done.
+  </footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const EXAMPLES = [
+  "What was the average resolution time for P1 incidents last quarter, and what were the top 3 recurring root causes?",
+  "Why did the most recent payments outage happen, and how was it remediated?",
+  "Show the weekly trend of P1 incidents for the payments service this year.",
+];
+EXAMPLES.forEach((ex) => {
+  const b = document.createElement("button");
+  b.textContent = ex.length > 60 ? ex.slice(0, 57) + "…" : ex;
+  b.title = ex;
+  b.onclick = () => { $("q").value = ex; };
+  $("examples").appendChild(b);
+});
+
+function renderCitations(text) {
+  return text.replace(/\[(\d+)\]/g, '<span class="cite">[$1]</span>');
+}
+
+async function ask() {
+  const question = $("q").value.trim();
+  if (!question) return;
+  $("send").disabled = true;
+  $("answer").innerHTML = "";
+  $("meta").textContent = "";
+  $("sources").innerHTML = "";
+  $("trace").innerHTML = "";
+  $("sourcesCard").classList.add("hidden");
+  $("traceCard").classList.add("hidden");
+  $("status").textContent = "connecting…";
+
+  let answer = "";
+  try {
+    const resp = await fetch("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+    });
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const blocks = buffer.split(/\r?\n\r?\n/);
+      buffer = blocks.pop();
+      for (const block of blocks) handleEvent(block, (t) => { answer += t; });
+    }
+  } catch (e) {
+    $("status").textContent = "error: " + e;
+  } finally {
+    $("send").disabled = false;
+  }
+
+  function handleEvent(raw, onToken) {
+    let type = "message", data = "";
+    for (const line of raw.split(/\r?\n/)) {
+      if (line.startsWith("event:")) type = line.slice(6).trim();
+      else if (line.startsWith("data:")) data += line.slice(5).trim();
+    }
+    if (!data) return;
+    let payload; try { payload = JSON.parse(data); } catch { return; }
+
+    if (type === "status") {
+      $("status").textContent = payload.step != null ? `${payload.phase} (step ${payload.step})` : payload.phase;
+    } else if (type === "tool_call") {
+      $("status").textContent = `calling ${payload.tool}(${JSON.stringify(payload.arguments)})`;
+    } else if (type === "tool_result") {
+      $("status").textContent = `${payload.tool} → ${payload.summary}`;
+    } else if (type === "token") {
+      onToken(payload.text);
+      $("answer").innerHTML = renderCitations(answer);
+    } else if (type === "sources") {
+      renderSources(payload.sources || []);
+    } else if (type === "trace") {
+      renderTrace(payload.trace || []);
+    } else if (type === "done") {
+      $("status").textContent = `done · ${payload.steps} step(s) · ${payload.stop_reason} · $${(payload.cost_usd||0).toFixed(5)}`;
+      $("meta").textContent = payload.model || "";
+    } else if (type === "error") {
+      $("status").textContent = "error: " + (payload.detail || payload.error);
+    }
+  }
+}
+
+function renderSources(sources) {
+  if (!sources.length) return;
+  $("sourcesCard").classList.remove("hidden");
+  $("sources").innerHTML = sources.map((s) =>
+    `<div class="src"><span class="idx">[${s.index}]</span> <span class="meta">${s.source_type} · ${s.doc_id} · ${s.title}</span><div class="snip">${escapeHtml(s.snippet)}</div></div>`
+  ).join("");
+}
+
+function renderTrace(trace) {
+  if (!trace.length) return;
+  $("traceCard").classList.remove("hidden");
+  $("trace").innerHTML = trace.map((t) =>
+    `<div class="step${t.is_error ? " err" : ""}"><span class="tool">${t.tool}</span>(${escapeHtml(JSON.stringify(t.arguments))}) <span class="pill">${(t.latency_ms||0).toFixed(0)}ms</span><div>${escapeHtml(t.result_summary || "")}</div></div>`
+  ).join("");
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+$("send").onclick = ask;
+$("q").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) ask(); });
+</script>
+</body>
+</html>
