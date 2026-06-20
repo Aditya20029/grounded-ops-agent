@@ -65,7 +65,18 @@ jobs:
         run: python -m pytest -m "not integration"
 
       - name: Migrate
-        run: python -m alembic upgrade head
+        run: |
+          if [ -f alembic.ini ]; then
+            python -m alembic upgrade head
+          else
+            echo "No alembic.ini yet (added in Phase 2) - skipping migrations."
+          fi
 
       - name: Integration tests
-        run: python -m pytest -m integration
+        run: |
+          set +e
+          python -m pytest -m integration
+          code=$?
+          # Exit code 5 means "no tests collected" (no integration tests yet).
+          if [ "$code" -eq 5 ]; then echo "No integration tests collected yet."; exit 0; fi
+          exit "$code"
