@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from typing import Any
 
+from app.agent.tool_executor import ToolOutcome
 from app.ingestion.store import ChunkRow
 from app.llm.base import LLMProvider
 from app.llm.embeddings import HashingEmbeddingProvider
@@ -111,3 +113,24 @@ class FakeRetrieval:
         use_faiss: bool = False,
     ) -> list[RetrievedChunk]:
         return self._chunks[:top_k]
+
+
+class FakeToolExecutor:
+    """Returns scripted tool outcomes; records calls."""
+
+    def __init__(
+        self, tools: list[ToolSpec], outcomes: dict[str, ToolOutcome] | None = None
+    ) -> None:
+        self._tools = tools
+        self._outcomes = outcomes or {}
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+
+    async def list_tools(self) -> list[ToolSpec]:
+        return self._tools
+
+    async def call(self, name: str, arguments: dict[str, Any], *, timeout: float) -> ToolOutcome:
+        self.calls.append((name, arguments))
+        return self._outcomes.get(
+            name,
+            ToolOutcome(text=f"(no scripted result for {name})", structured=None, is_error=False),
+        )

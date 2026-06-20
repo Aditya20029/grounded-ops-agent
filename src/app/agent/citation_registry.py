@@ -24,6 +24,18 @@ def _snippet(content: str) -> str:
     return flat[:_SNIPPET_CHARS]
 
 
+def render_records(entries: list[CitationEntry]) -> str:
+    """Render citation entries as labelled, fenced records for a prompt."""
+    blocks = []
+    for e in entries:
+        blocks.append(
+            f"[{e.index}] source_type={e.source_type} doc_id={e.doc_id} "
+            f'title="{e.title}"\n'
+            f"{RECORD_OPEN}\n{e.content}\n{RECORD_CLOSE}"
+        )
+    return "\n\n".join(blocks)
+
+
 @dataclass(frozen=True)
 class CitationEntry:
     index: int
@@ -80,13 +92,16 @@ class CitationRegistry:
     def has_index(self, index: int) -> bool:
         return 1 <= index <= len(self._order)
 
+    def entries_for(self, indices: list[int]) -> list[CitationEntry]:
+        seen: set[int] = set()
+        out: list[CitationEntry] = []
+        for index in indices:
+            entry = self.get(index)
+            if entry is not None and index not in seen:
+                seen.add(index)
+                out.append(entry)
+        return out
+
     def render_for_prompt(self) -> str:
-        """Render entries as labelled, fenced records for the answering prompt."""
-        blocks = []
-        for e in self.entries():
-            blocks.append(
-                f"[{e.index}] source_type={e.source_type} doc_id={e.doc_id} "
-                f'title="{e.title}"\n'
-                f"{RECORD_OPEN}\n{e.content}\n{RECORD_CLOSE}"
-            )
-        return "\n\n".join(blocks)
+        """Render all entries as labelled, fenced records for the answering prompt."""
+        return render_records(self.entries())
